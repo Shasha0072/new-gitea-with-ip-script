@@ -1,19 +1,20 @@
 #!/bin/bash
 #
-# Automated Gitea Installation Script with HTTPS using IP Address
-# =============================================================
+# Automated Gitea Installation Script with HTTPS using IP Address or Domain
+# ======================================================================
 #
 # This script automates the installation of Gitea with HTTPS using Nginx as a reverse proxy,
-# configuring it to use the server's IP address instead of a domain name.
+# configuring it to use either a server's IP address or a domain name.
 #
 # Usage:
-#   ./install-gitea-ip.sh [-p "StrongPassword123"] [-i /path/to/install] [-s SSH_PORT] [-I IP_ADDRESS]
+#   ./install-gitea-domain.sh [-p "StrongPassword123"] [-i /path/to/install] [-s SSH_PORT] [-I IP_ADDRESS] [-d DOMAIN]
 #
 # Options:
 #   -p PASSWORD      Database and initial admin password (default: auto-generated)
 #   -i INSTALL_DIR   Installation directory (default: /opt/gitea)
 #   -s SSH_PORT      SSH port for Git operations (default: 222)
 #   -I IP_ADDRESS    Server IP address (default: auto-detected)
+#   -d DOMAIN        Domain name for Gitea (optional)
 #   -h               Display this help and exit
 
 set -e
@@ -23,23 +24,26 @@ DB_PASSWORD=""
 INSTALL_DIR="/opt/gitea"
 SSH_PORT=222
 IP_ADDRESS=""
+DOMAIN=""
 AUTO_PASSWORD=false
 
 # Parse command-line options
-while getopts "p:i:s:I:h" opt; do
+while getopts "p:i:s:I:d:h" opt; do
   case ${opt} in
     p) DB_PASSWORD=$OPTARG ;;
     i) INSTALL_DIR=$OPTARG ;;
     s) SSH_PORT=$OPTARG ;;
     I) IP_ADDRESS=$OPTARG ;;
+    d) DOMAIN=$OPTARG ;;
     h)
-      echo "Usage: $0 [-p \"StrongPassword123\"] [-i /path/to/install] [-s SSH_PORT] [-I IP_ADDRESS]"
+      echo "Usage: $0 [-p \"StrongPassword123\"] [-i /path/to/install] [-s SSH_PORT] [-I IP_ADDRESS] [-d DOMAIN]"
       echo
       echo "Options:"
       echo "  -p PASSWORD      Database and initial admin password (default: auto-generated)"
       echo "  -i INSTALL_DIR   Installation directory (default: /opt/gitea)"
       echo "  -s SSH_PORT      SSH port for Git operations (default: 222)"
       echo "  -I IP_ADDRESS    Server IP address (default: auto-detected)"
+      echo "  -d DOMAIN        Domain name for Gitea (optional)"
       echo "  -h               Display this help and exit"
       exit 0
       ;;
@@ -58,13 +62,28 @@ done
 if [ -z "$IP_ADDRESS" ]; then
   echo "Auto-detecting server IP address..."
   IP_ADDRESS=$(ip addr show | grep -E "inet .* scope global" | head -1 | awk '{print $2}' | cut -d/ -f1)
-  
+
   if [ -z "$IP_ADDRESS" ]; then
     echo "Error: Could not detect server IP address. Please provide it with -I option."
     exit 1
   fi
-  
+
   echo "Detected IP address: $IP_ADDRESS"
+fi
+
+# Determine server name to use (domain or IP)
+if [ -n "$DOMAIN" ]; then
+  SERVER_NAME="$DOMAIN"
+  echo "Using domain name: $DOMAIN"
+  
+  # If not already in hosts file, suggest adding it
+  if ! grep -q "$DOMAIN" /etc/hosts; then
+    echo "Note: You may want to add this entry to /etc/hosts on client machines:"
+    echo "$IP_ADDRESS $DOMAIN"
+  fi
+else
+  SERVER_NAME="$IP_ADDRESS"
+  echo "Using IP address as server name: $IP_ADDRESS"
 fi
 
 # Generate random password if not provided
@@ -77,6 +96,9 @@ fi
 echo "Gitea Installation Plan:"
 echo "========================"
 echo "Server IP:         $IP_ADDRESS"
+if [ -n "$DOMAIN" ]; then
+  echo "Domain Name:       $DOMAIN"
+fi
 if [ "$AUTO_PASSWORD" = true ]; then
   echo "Database Password: $DB_PASSWORD (auto-generated)"
 else
@@ -134,7 +156,7 @@ if [ -d "$INSTALL_DIR" ]; then
       cd "$INSTALL_DIR"
       docker-compose down 2>/dev/null || true
     fi
-    
+
     echo "Removing existing installation directory..."
     rm -rf "$INSTALL_DIR"
   else
@@ -173,9 +195,9 @@ services:
       - GITEA__database__NAME=gitea
       - GITEA__database__USER=gitea
       - GITEA__database__PASSWD=${DB_PASSWORD}
-      - GITEA__server__DOMAIN=${IP_ADDRESS}
-      - GITEA__server__ROOT_URL=https://${IP_ADDRESS}/
-      - GITEA__server__SSH_DOMAIN=${IP_ADDRESS}
+      - GITEA__server__DOMAIN=${SERVER_NAME}
+      - GITEA__server__ROOT_URL=https://${SERVER_NAME}/
+      - GITEA__server__SSH_DOMAIN=${SERVER_NAME}
       - GITEA__server__SSH_PORT=22
       - GITEA__service__DISABLE_REGISTRATION=false
       - GITEA__log__MODE=console
@@ -233,8 +255,8 @@ echo "Creating Nginx configuration..."
 cat > nginx/conf.d/gitea.conf << EOF
 server {
     listen 80;
-    server_name ${IP_ADDRESS};
-    
+    server_name ${SERVER_NAME};
+
     # Redirect all HTTP requests to HTTPS
     location / {
         return 301 https://\$host\$request_uri;
@@ -243,22 +265,22 @@ server {
 
 server {
     listen 443 ssl;
-    server_name ${IP_ADDRESS};
-    
+    server_name ${SERVER_NAME};
+
     # SSL configuration
     ssl_certificate /etc/nginx/ssl/cert.pem;
     ssl_certificate_key /etc/nginx/ssl/key.pem;
-    
+
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
-    
+
     # Security headers
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    
+
     # Proxy configuration
     location / {
         proxy_pass http://server:3000;
@@ -266,16 +288,16 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        
+
         # WebSocket support
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
-        
+
         # Increase timeouts for large Git operations
         proxy_read_timeout 300;
         proxy_connect_timeout 300;
         proxy_send_timeout 300;
-        
+
         client_max_body_size 100M;
     }
 }
@@ -286,7 +308,7 @@ echo "Generating self-signed SSL certificates..."
 mkdir -p nginx/ssl
 cd nginx/ssl
 openssl genrsa -out key.pem 2048
-openssl req -new -key key.pem -out csr.pem -subj "/CN=${IP_ADDRESS}"
+openssl req -new -key key.pem -out csr.pem -subj "/CN=${SERVER_NAME}"
 openssl x509 -req -days 365 -in csr.pem -signkey key.pem -out cert.pem
 cd $INSTALL_DIR
 
@@ -319,8 +341,22 @@ cat > README.md << EOF
 
 ## Access Information
 
+EOF
+
+if [ -n "$DOMAIN" ]; then
+  cat >> README.md << EOF
+- Gitea Web Interface: https://${DOMAIN}
+- SSH Access: ssh://git@${DOMAIN}:${SSH_PORT}
+- IP Address: ${IP_ADDRESS}
+EOF
+else
+  cat >> README.md << EOF
 - Gitea Web Interface: https://${IP_ADDRESS}
 - SSH Access: ssh://git@${IP_ADDRESS}:${SSH_PORT}
+EOF
+fi
+
+cat >> README.md << EOF
 - Installation Directory: ${INSTALL_DIR}
 - Database Password: ${DB_PASSWORD}
 
@@ -345,6 +381,21 @@ docker exec -t gitea-db pg_dumpall -c -U gitea | gzip > \$(pwd)/backups/postgres
 
 EOF
 
+if [ -n "$DOMAIN" ]; then
+  cat >> README.md << EOF
+## Domain Configuration
+
+To access Gitea using the domain name ${DOMAIN}, add this entry to the hosts file on each client machine:
+
+\`\`\`
+${IP_ADDRESS} ${DOMAIN}
+\`\`\`
+
+- On Linux/macOS: Edit /etc/hosts
+- On Windows: Edit C:\\Windows\\System32\\drivers\\etc\\hosts
+EOF
+fi
+
 # Wait for services to start
 echo "Waiting for services to start..."
 sleep 10
@@ -357,7 +408,12 @@ if [ "$CONTAINERS_RUNNING" -eq 3 ]; then
   echo "Gitea has been successfully installed!"
   echo "==================================================="
   echo ""
-  echo "Access your Gitea instance at: https://${IP_ADDRESS}"
+  if [ -n "$DOMAIN" ]; then
+    echo "Access your Gitea instance at: https://${DOMAIN}"
+    echo "(Make sure to add the IP-to-domain mapping in your hosts file)"
+  else
+    echo "Access your Gitea instance at: https://${IP_ADDRESS}"
+  fi
   echo "SSH access port: ${SSH_PORT}"
   echo ""
   if [ "$AUTO_PASSWORD" = true ]; then
@@ -372,6 +428,12 @@ if [ "$CONTAINERS_RUNNING" -eq 3 ]; then
   echo "When you first access Gitea, you'll be directed to the setup page"
   echo "to create an admin account and configure other settings."
   echo ""
+  
+  if [ -n "$DOMAIN" ]; then
+    echo "To access Gitea using the domain name, add this to your hosts file:"
+    echo "${IP_ADDRESS} ${DOMAIN}"
+    echo ""
+  fi
 else
   echo ""
   echo "==================================================="

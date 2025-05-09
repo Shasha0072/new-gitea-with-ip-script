@@ -29,13 +29,13 @@ chmod +x install-gitea-ip.sh
 
 #### Options
 
-| Option | Description |
-|--------|-------------|
-| `-p PASSWORD` | Database and initial admin password (default: auto-generated) |
-| `-i INSTALL_DIR` | Installation directory (default: /opt/gitea) |
-| `-s SSH_PORT` | SSH port for Git operations (default: 222) |
-| `-I IP_ADDRESS` | Server IP address (default: auto-detected) |
-| `-h` | Display help and exit |
+| Option           | Description                                                   |
+| ---------------- | ------------------------------------------------------------- |
+| `-p PASSWORD`    | Database and initial admin password (default: auto-generated) |
+| `-i INSTALL_DIR` | Installation directory (default: /opt/gitea)                  |
+| `-s SSH_PORT`    | SSH port for Git operations (default: 222)                    |
+| `-I IP_ADDRESS`  | Server IP address (default: auto-detected)                    |
+| `-h`             | Display help and exit                                         |
 
 ### Examples
 
@@ -46,6 +46,7 @@ chmod +x install-gitea-ip.sh
 ```
 
 This will:
+
 - Detect your server's IP address automatically
 - Set up Gitea with a self-signed certificate for that IP
 - Auto-generate a secure database password
@@ -58,6 +59,7 @@ This will:
 ```
 
 This will:
+
 - Use the specified password for the database
 - Install to the custom directory `/srv/gitea`
 - Configure SSH on port 2222
@@ -81,11 +83,11 @@ chmod +x uninstall-gitea-ip.sh
 
 #### Options
 
-| Option | Description |
-|--------|-------------|
-| `-i INSTALL_DIR` | Installation directory (default: /opt/gitea) |
-| `-r` | Remove data volumes (CAUTION: This will delete all repositories and data) |
-| `-h` | Display help and exit |
+| Option           | Description                                                               |
+| ---------------- | ------------------------------------------------------------------------- |
+| `-i INSTALL_DIR` | Installation directory (default: /opt/gitea)                              |
+| `-r`             | Remove data volumes (CAUTION: This will delete all repositories and data) |
+| `-h`             | Display help and exit                                                     |
 
 ### Example
 
@@ -113,6 +115,7 @@ After installation:
 ## Maintenance
 
 The installation creates a README.md file in the installation directory with:
+
 - Access information
 - Database password (if auto-generated)
 - Common management commands

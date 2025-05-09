@@ -295,17 +295,22 @@ echo "Starting Gitea..."
 docker-compose up -d
 
 # Configure firewall if needed
-if command -v firewall-cmd &> /dev/null; then
-  echo "Configuring firewall..."
+echo "Checking firewall configuration..."
+if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
+  echo "FirewallD is running, configuring rules..."
   firewall-cmd --permanent --add-service=http
   firewall-cmd --permanent --add-service=https
   firewall-cmd --permanent --add-port=${SSH_PORT}/tcp
   firewall-cmd --reload
-elif command -v ufw &> /dev/null; then
-  echo "Configuring UFW firewall..."
+  echo "Firewall configured successfully."
+elif command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+  echo "UFW is running, configuring rules..."
   ufw allow http
   ufw allow https
   ufw allow ${SSH_PORT}/tcp
+  echo "Firewall configured successfully."
+else
+  echo "No active firewall detected. No firewall rules added."
 fi
 
 # Create a simple README file
